@@ -13,8 +13,9 @@
 - [使用示例](#使用示例)
 - [生成报告长什么样](#生成报告长什么样)
 - [前置准备](#前置准备)
+- [API Key 配置(必读)](#api-key-配置必读)
 - [安装](#安装)
-- [工作流程(9 步法)](#工作流程9-步法)
+- [工作流程(10 步法)](#工作流程10-步法)
 - [项目结构](#项目结构)
 - [关键能力](#关键能力)
 - [常见问题](#常见问题)
@@ -29,9 +30,21 @@
 
 **weekend-city-trip** 是一个 [Claude Code/Codex Skill],专门用来做**中国城市的周末 / 短期(1 个月内)旅游深度调研**。
 
-你只需要对 Claude Code/Codex 说一句话,比如:
+### 为什么做这个项目？
 
-> "调研下周末广州有什么好玩的"
+一方面我是积累很多旅游经验，我知道怎样发掘城市的魅力。 例如：小红书近期城市活动 ,演唱会,集市，球赛，博物馆 ， 地方宝优惠票 ， 有喜茶的购物中心有哪些， 美食街，city walk, 5a景区，以上地点的地铁路线， 全面调查，一个一个完成，然后做成详细文档
+为什么要经常去城市看看？无论是否去过，不是说去过就不去，因为过去去旅游景区那种去不去都一样。关键是看城市化，人的新生活，到处的创新，活动，展会， 兴趣消费，
+从这些，你才知道人们的需求，才知道自己要干嘛，开发什么AI项目，人们需要什么。
+不然，其实我们完全没有创新。多深刻体验我国的城市新兴生活方式！
+我利用我的经验介绍怎样从城市里面发现新东西，有价值的东西，促进自己能够赚钱的方向！
+核心就是：1 要快，skill帮你安排很好的路线，城市最有看点的地方， 2 要准，你直接去到那些新兴活动，市集，生产力丰富，年轻人聚集点，我给你安排好，3 要新，都是最新的城市活动，你去旅游景区全部外地人，没有可能接触到什么真正的城市，我安排的都是本地人聚集的活动地点。
+
+### 使用示例
+
+先配置好 API Key （.env）, 你只需要对 Claude Code/Codex 说一句话,比如:
+
+> "利用city skill调研下周末广州有什么好玩的"
+> "利用city skill调研下个月深圳有什么活动的，并生成地图"
 
 这个 skill 就会自动:
 
@@ -40,6 +53,7 @@
 3. 把搜索结果按 10 节标准结构整合成一份**图文并茂的 Markdown 报告**
 4. **自动质量检查** — 不达标会触发补查询重写(最多 2 轮迭代)
 5. (可选)把 Markdown 转成**漂亮的 HTML 单文件**方便分享
+6. (可选)把 Markdown 转成**漂亮的 地图 HTML 单文件**方便分享
 
 最终交付物是一份 20-30 KB 的城市周末行动方案,覆盖吃、喝、玩、乐、行、住各个维度。
 
@@ -138,6 +152,27 @@ D:/fireclaw/广州下周末调查报告_博查版.md
 
 会多生成一份单文件 HTML,自带 CSS,浏览器打开直接看,也方便打印为 PDF 分享给朋友。
 
+### 进阶用法(地图生成)
+
+加一句"地图版"/"标在地图上":
+
+```
+调研下周末杭州,生成地图版
+```
+
+或:
+
+```
+调研杭州 7 月 4-5 日,把所有地点标在地图上
+```
+
+会触发 Step 10 三步流程(extract_places → geocode → inject),输出:
+- `{城市}{时间}_map.html`(30-40KB,双击即可打开)
+- 11 类水滴形彩色标记 + 分类筛选 + 搜索 + 双向联动
+- **不依赖 http 服务器**,坐标预编码,可离线分享
+
+**前提**:用户需自行配置高德 Key(详见 [API Key 配置](#api-key-配置必读))。
+
 ### 明确时间 + 偏好
 
 ```
@@ -175,13 +210,22 @@ skill 会:
 
 ## 前置准备
 
-### 1. 博查 API Key(必需)
+### 1. 博查 API Key(调研报告必需)
 
 去 [博查官网](https://open.bochaai.com/) 注册,获取 API Key(格式 `sk-xxx`)。
 
 **新用户通常有免费额度**,足够跑 3-5 次完整调研。每次调研消耗约 11-15 次调用。
 
-### 2. Python(HTML 输出必需)
+### 2. 高德 API Key(地图生成必需,纯调研报告可跳过)
+
+如果要生成 HTML 地图(Step 10),需要到 [高德开放平台](https://console.amap.com/dev/key/app) 申请**两类 Key**:
+
+- **Web 端(JS API)Key + 安全密钥**:浏览器加载地图底图用
+- **Web 服务 Key**:Python 服务端批量地理编码用
+
+**两类是不同的 Key,不能互通**。详细配置见下方 [API Key 配置](#api-key-配置必读) 章节。
+
+### 3. Python(HTML / 地图输出必需)
 
 - **Python 3.7+**(脚本依赖)
 - **推荐安装**(完整 GFM 支持):
@@ -190,12 +234,12 @@ skill 会:
   ```
 - **不装也能用**:脚本会自动降级到内置极简转换器,基础表格/代码块/列表都支持
 
-### 3. curl(已预装)
+### 4. curl(已预装)
 
 - Windows 10/11、macOS、Linux 都已预装
 - 调用博查 API 用 curl,无需额外装 HTTP 客户端
 
-### 4. Claude Code/Codex
+### 5. Claude Code/Codex
 
 - 已安装 Claude Code/Codex CLI
 - 把本 skill 放到 `.claude/skills/weekend-city-trip/`(参见[安装](#安装))
@@ -229,30 +273,94 @@ git clone <your-repo-url> .claude/skills/weekend-city-trip
 
 应该能看到 `weekend-city-trip` 出现在列表里。
 
-### 设置 API Key(两种方式)
-
-**方式 A:环境变量(推荐)**
+### 验证 API Key 是否生效
 
 ```bash
-# Linux/macOS
+# 验证博查
+echo $BOCHA_API_KEY  # 应输出 sk-xxx
+
+# 验证高德(可选,仅地图生成需要)
+echo $AMAP_KEY $AMAP_JS_KEY $AMAP_SECURITY
+```
+
+更详细的 Key 配置见下方 [API Key 配置](#api-key-配置必读) 章节。
+
+---
+
+## API Key 配置(必读)
+
+本 skill 涉及**两个服务的 API Key**,均需用户自行申请,**skill 不内置任何 Key**。
+
+### 1. 博查 API Key(调研报告必需)
+
+| 项 | 值 |
+|---|---|
+| 申请地址 | https://open.bochaai.com/ |
+| 环境变量 | `BOCHA_API_KEY` |
+| 格式 | `sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` |
+| 免费额度 | 新用户通常有,够跑 3-5 次完整调研 |
+
+**配置方式**:
+
+```bash
+# bash / git-bash(推荐持久化到 ~/.bashrc)
 export BOCHA_API_KEY="sk-xxx"
 
 # Windows PowerShell
 $env:BOCHA_API_KEY="sk-xxx"
 
-# Windows CMD
-set BOCHA_API_KEY=sk-xxx
+# 临时(单次命令)
+BOCHA_API_KEY=sk-xxx curl ...
 ```
 
-**方式 B:key直接告诉 Codex/Claude code**
-
+**或直接告诉 Claude**:
 ```
 调研广州下周末,API key 是 sk-xxx
 ```
 
+### 2. 高德 API Key(地图生成必需)
+
+如果要生成 HTML 地图(Step 10),需要**两类 Key**(不能互通):
+
+| 环境变量 | Key 类型 | 申请入口 | 用途 |
+|---|---|---|---|
+| `AMAP_JS_KEY` | Web 端(JS API) | 高德控制台 → 应用类型选「Web 端(JS API)」 | 浏览器加载地图底图 |
+| `AMAP_SECURITY` | 安全密钥(与 JS API Key 配套) | 同上,Key 详情页可见 | JS API 鉴权(2021-12-02 后申请的 Key 必填) |
+| `AMAP_KEY` | Web 服务 | 高德控制台 → 应用类型选「Web 服务」 | Python 服务端批量地理编码 |
+
+**配置方式**:
+
+```bash
+# bash / git-bash(推荐持久化到 ~/.bashrc)
+export AMAP_JS_KEY="用户提供的 JS API Key"
+export AMAP_SECURITY="用户提供的安全密钥"
+export AMAP_KEY="用户提供的 Web 服务 Key"
+
+# Windows PowerShell
+$env:AMAP_JS_KEY="..."
+$env:AMAP_SECURITY="..."
+$env:AMAP_KEY="..."
+```
+
+**两类 Key 不能互通**:
+- JS API Key 调 REST 会报 `USERKEY_PLAT_NOMATCH`
+- Web 服务 Key 在浏览器加载会被拒绝
+
+**安全密钥的前端暴露**:JS API 安全密钥会出现在最终 HTML 里(高德常规用法,无法避免)。生产环境可通过代理服务器转发隐藏,个人调研直接内置即可。
+
+### 3. Key 缺失时的行为
+
+| 脚本 | 缺失 Key | 行为 |
+|---|---|---|
+| Step 5 调研 | `BOCHA_API_KEY` | curl 返回 401 |
+| Step 10 `geocode.py` | `AMAP_KEY` | 打印帮助信息 + 退出码 2 |
+| Step 10 `inject.py` | `AMAP_JS_KEY` 或 `AMAP_SECURITY` | 打印帮助信息 + 退出码 2 |
+
+所有错误信息都会指导用户到对应控制台申请,不会编造假 Key。
+
 ---
 
-## 工作流程(9 步法)
+## 工作流程(10 步法)
 
 skill 内部执行流程,公开透明,方便排查问题。
 
@@ -377,33 +485,86 @@ HTML 特性:
 - 图片 lazy loading
 - 打印友好(`@media print` 样式,可直接打印为 PDF)
 
+### Step 10:HTML 地图面板生成(可选)
+
+**触发条件**:用户明确要求生成地图(如"生成地图"、"标在地图上"、"地图版")。
+
+**前置条件**:
+- Step 8 已通过
+- 用户已配置高德 Key(见 [API Key 配置](#api-key-配置必读))
+
+**三步生成**(纯 Python,服务端预编码坐标):
+
+```bash
+SKILL=.claude/skills/weekend-city-trip
+REPORT="D:/fireclaw/{城市}{时间}调查报告_博查版.md"
+
+# Step A: 抽取地点(Markdown 章节 + 表格 → places.json)
+python "$SKILL/scripts/extract_places.py" "$REPORT"
+
+# Step B: 服务端地理编码(需要 AMAP_KEY)
+python "$SKILL/scripts/geocode.py" \
+  "D:/fireclaw/{城市}{时间}调查报告_博查版.places.json" {城市}
+
+# Step C: 注入模板生成最终 HTML(需要 AMAP_JS_KEY + AMAP_SECURITY)
+python "$SKILL/scripts/inject.py" \
+  "D:/fireclaw/{城市}{时间}调查报告_博查版.places.geo.json" \
+  "D:/fireclaw/{城市}{时间}_map.html" \
+  {城市} "{时间范围如 2026/7/4-5}"
+```
+
+**输出**:双击 `{城市}{时间}_map.html` 即可打开,**坐标已预编码,无需 http 服务器**。
+
+**地图特性**:
+- 11 类水滴形标记(演唱会/球赛/集市/博物馆/5A/喜茶/美食街/City Walk/购物中心/地铁站/优惠门票)
+- 分类筛选 pill(显示/隐藏类别)
+- 搜索框(实时过滤名称/地址/备注)
+- 双向联动(点卡片飞至地图 / 点 marker 高亮卡片)
+- 自动视野适配 + 响应式布局
+- NaN 坐标保护(无坐标的地点不参与飞至)
+
+**预期效果**:30-70 个地点 → 60-90% 编码成功 → 30-40KB 单文件 HTML。
+
+详细参考 [`references/map_generation.md`](references/map_generation.md)。
+
 ---
 
 ## 项目结构
 
 ```
 weekend-city-trip/
-├── SKILL.md                          # Skill 主文件(9 步法 + API 用法)
+├── SKILL.md                          # Skill 主文件(10 步法 + API 用法)
 ├── README.md                         # 本文件
 ├── references/
 │   ├── query_templates.md            # 11 个方向的 query body 模板
 │   ├── report_template.md            # 10 节报告标准结构模板
 │   ├── pitfalls.md                   # 12 个踩坑清单 + 决策树
-│   └── quality_check.md              # 质量检查 + 补查询迭代规则
+│   ├── quality_check.md              # 质量检查 + 补查询迭代规则
+│   └── map_generation.md             # 地图生成工作流(Step 10 详解)
+├── templates/
+│   └── map_panel.html                # 高德 JS API 2.0 地图模板(占位符)
 └── scripts/
-    └── md_to_html.py                 # Markdown → HTML 转换器
+    ├── md_to_html.py                 # Markdown → HTML 转换器(Step 9)
+    ├── extract_places.py             # Markdown → places.json(Step 10-A)
+    ├── geocode.py                    # places.json → places.geo.json(Step 10-B)
+    └── inject.py                     # geo.json → 最终 HTML(Step 10-C)
 ```
 
 ### 各文件作用
 
 | 文件 | 何时用 | 内容 |
 |---|---|---|
-| `SKILL.md` | 主流程入口 | 9 步法、API 用法速查、踩坑 Top 8 |
+| `SKILL.md` | 主流程入口 | 10 步法、API 用法速查、踩坑 Top 8 |
 | `references/query_templates.md` | 设计 query 时 | 11 个方向的 query body 模板,带 {CITY}/{MONTH} 占位符 |
 | `references/report_template.md` | 整合报告时 | 10 节结构示例、图片嵌入格式、Python 提取脚本 |
 | `references/pitfalls.md` | 遇到异常时 | 12 个踩坑详解 + 决策树 + 状态码表 |
 | `references/quality_check.md` | 报告写完后 | 5 维度检查 + 12 个触发条件 + 8 个补查询模板 |
-| `scripts/md_to_html.py` | 用户要 HTML 时 | 三档优先级转换 + 内嵌 CSS |
+| `references/map_generation.md` | 生成地图时 | 三步工作流详解、Key 配置、11 类配色、常见错误排查 |
+| `templates/map_panel.html` | 生成地图时 | 高德 JS API 2.0 模板,含 `{{AMAP_JS_KEY}}` / `{{AMAP_SECURITY}}` 占位符 |
+| `scripts/md_to_html.py` | 用户要 HTML 报告时 | 三档优先级转换 + 内嵌 CSS |
+| `scripts/extract_places.py` | 地图 Step A | 扫描 Markdown 章节 + 表格,输出 places.json |
+| `scripts/geocode.py` | 地图 Step B | 调高德 Web 服务 REST,补 lat/lng,需要 `AMAP_KEY` |
+| `scripts/inject.py` | 地图 Step C | 替换模板占位符,输出最终 HTML,需要 `AMAP_JS_KEY` + `AMAP_SECURITY` |
 
 ---
 
@@ -528,16 +689,21 @@ weekend-city-trip/
 | Step 5(并行调用 3 批次) | 1-2 分钟 |
 | Step 6-7(解析 + 整合) | 3-5 分钟 |
 | Step 8(质量检查 + 补查询) | 2-5 分钟(视触发条件) |
-| Step 9(HTML 输出,可选) | 30 秒 |
+| Step 9(HTML 报告输出,可选) | 30 秒 |
+| Step 10(HTML 地图生成,可选) | 1-2 分钟(extract + geocode + inject) |
 | **总计** | **7-15 分钟** |
 
 ### API 额度
 
+**博查**(调研报告):
 - 初始:11 次调用
 - 补救:0-4 次(视触发条件)
 - **总计:11-15 次**
 
-博查定价请见官网。新用户通常有免费额度,够跑 3-5 次完整调研。
+**高德**(地图生成,可选):
+- Web 服务地理编码:30-70 次/城市(每次调研,免费配额 3000 次/日)
+- JS API 底图加载:浏览器端调用,免费配额 30 万次/日
+- 个人调研完全够用,基本不会触顶
 
 ---
 

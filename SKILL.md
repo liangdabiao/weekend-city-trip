@@ -39,12 +39,41 @@ description: Comprehensive weekend city travel investigation skill for Chinese c
 | 偏好(可选) | 亲子/情侣/独行/带娃 | 通用 |
 | 是否图文版(可选) | thumbnailUrl 嵌入报告 | 是 |
 | **输出格式**(可选) | markdown / html / both | markdown |
+| **工作目录**(可选) | 报告/地图输出目录,环境变量 `BOCHA_OUTPUT_DIR` | `D:/fireclaw` |
 
 如果用户没说时间范围,**默认下周末**(本周可能来不及准备)。
 
+### API Key 配置
+
+本 Skill 需要以下 API Key，推荐通过 `.env` 文件配置（已在 `.gitignore` 中排除，不会泄露）：
+
+| 变量名 | 用途 | 申请地址 |
+|--------|------|----------|
+| `BOCHA_API_KEY` | 博查 WebSearch API（搜索调研 + LLM 地点清理） | https://bocha.cn/ |
+| `AMAP_KEY` | 高德 Web 服务 API（地理编码） | https://console.amap.com/dev/key/app（类型选「Web 服务」） |
+| `AMAP_JS_KEY` | 高德 Web 端 JS API（浏览器加载地图底图） | https://console.amap.com/dev/key/app（类型选「Web 端(JS API)」） |
+| `AMAP_SECURITY` | 高德安全密钥（与 JS API Key 配套） | 高德控制台 Key 详情页 |
+| `BOCHA_OUTPUT_DIR` | 报告/地图输出目录（可选） | 默认 `D:/fireclaw` |
+| `VERBOSE` | 详细日志输出（可选，`1`/`true`/`yes`） | 默认关闭 |
+
+**配置方式**:
+```bash
+# 方式 1: .env 文件（推荐，持久化）
+cp .env.example .env
+# 编辑 .env 填入你的 Key
+
+# 方式 2: 环境变量（临时）
+export BOCHA_API_KEY="sk-xxx"
+export AMAP_KEY="xxx"
+export AMAP_JS_KEY="xxx"
+export AMAP_SECURITY="xxx"
+```
+
+> **安全提醒**: 绝不要把 `.env` 文件或真实 Key 提交到版本库。`.env.example` 仅为模板，不含真实密钥。
+
 ---
 
-## 工作流程(8 步法)
+## 工作流程(10 步法)
 
 ### Step 1: 时间锁定
 
@@ -63,9 +92,14 @@ description: Comprehensive weekend city travel investigation skill for Chinese c
 
 ### Step 3: TaskCreate + 工作目录
 
+工作目录用 `$OUTPUT_DIR` 表示，默认为 `D:/fireclaw`，可通过环境变量 `BOCHA_OUTPUT_DIR` 覆盖。
 ```
-D:/fireclaw/bocha_{城市拼音}/
+$OUTPUT_DIR/bocha_{城市拼音}/
 ```
+
+**变量约定**:
+- `$OUTPUT_DIR` — 报告/地图输出目录（默认 `D:/fireclaw`）
+- `$SKILL_DIR` — 本 Skill 所在目录（即本文件所在目录）
 
 TaskCreate 6 个任务(信息密度与执行效率的平衡点):
 1. {城市}近期活动(活动/演唱会/集市/球赛/博物馆)
@@ -81,7 +115,7 @@ TaskCreate 6 个任务(信息密度与执行效率的平衡点):
 **必须用 heredoc + `-d @file.json`**,不要内联单引号 JSON(Windows curl 坑)。
 
 ```bash
-cat > D:/fireclaw/bocha_{城市拼音}/q1a.json << 'EOF'
+cat > $OUTPUT_DIR/bocha_{城市拼音}/q1a.json << 'EOF'
 {"query":"广州 周末活动 展览 演出 市集 演唱会 2026年7月","summary":true,"count":12,"freshness":"oneMonth"}
 EOF
 ```
@@ -94,7 +128,7 @@ EOF
 ```bash
 API_KEY="sk-xxx"
 API="https://api.bocha.cn/v1/web-search"
-DIR="D:/fireclaw/bocha_{城市拼音}"
+DIR="$OUTPUT_DIR/bocha_{城市拼音}"
 
 curl -s -X POST "$API" -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" -d @"$DIR/q1a.json" -o "$DIR/r_q1a.json" &
@@ -151,7 +185,7 @@ for f in files:
 
 按 `references/report_template.md` 的 10 节标准结构整合,输出到:
 ```
-D:/fireclaw/{城市}{时间}调查报告_博查版.md
+$OUTPUT_DIR/{城市}{时间}调查报告_博查版.md
 ```
 
 **注意**:这只是初稿,**不等于任务完成**。必须经过 Step 8 质量检查与迭代优化才能交付。
@@ -285,8 +319,8 @@ python -c "import markdown" 2>&1 || pip install markdown pymdown-extensions
 #### 9.2 执行转换
 
 ```bash
-python D:/fireclaw/.claude/skills/weekend-city-trip/scripts/md_to_html.py \
-  "D:/fireclaw/{城市}{时间}调查报告_博查版.md"
+python $SKILL_DIR/scripts/md_to_html.py \
+  "$OUTPUT_DIR/{城市}{时间}调查报告_博查版.md"
 # 默认输出同名 .html 文件,也可指定第二参数:
 # python md_to_html.py input.md output.html
 ```
@@ -307,6 +341,185 @@ python D:/fireclaw/.claude/skills/weekend-city-trip/scripts/md_to_html.py \
 - Markdown 源文件路径
 - HTML 文件路径(本次新增)
 - 推荐查看方式:浏览器打开,或打印为 PDF 分享
+
+---
+
+### Step 10: 地图面板生成(可选,条件触发)
+
+**触发条件**:用户明确要求生成地图(如"生成地图"、"标注在地图上"、"地图版"、"mark on map")。
+
+**前置条件**:Step 8 质量检查必须已通过,Markdown 报告为最终交付版。
+
+#### 10.1 一键管线(build_map.sh)
+
+可用 `build_map.sh` 一键执行完整管线(需要设置环境变量):
+
+```bash
+export AMAP_KEY="..."    # 高德 Web 服务 Key
+export AMAP_JS_KEY="..." # 高德 Web 端 JS API Key
+export AMAP_SECURITY="..." # 高德安全密钥
+export BOCHA_API_KEY="..." # 博查 API Key(用于 clean_geojson LLM 过滤)
+
+bash $SKILL_DIR/scripts/build_map.sh 金华 "未来一个月" \
+  -m "$OUTPUT_DIR/金华未来一个月调查报告_博查版.md"
+```
+
+该脚本自动执行以下 5 步,已完成步骤自动跳过:
+
+```
+Markdown 报告(.md)
+   ↓ Step 1: extract_places.py   扫描章节+表格→ places.json
+places.json
+   ↓ Step 2: geocode.py          高德 REST 批量地理编码→ geo.json
+places.geo.json
+   ↓ Step 3: clean_geojson.py    bocha LLM API 清理非地点条目
+geo.json(已清理)
+   ↓ Step 4: inject.py           模板替换→ 地图 HTML
+{城市}地图_博查版.html
+   ↓ Step 5: validate_map.py     自动验证地图质量
+```
+
+**核心决策**:坐标在**服务端预编码**写入 JSON。HTML 打开时只渲染,不调任何外部 API。
+优势:
+- 双击 HTML 即可,**不依赖 http 服务器**(file:// 也正常)
+- 不受浏览器 QPS / 配额限制
+- HTML 体积小、加载快、可离线分享
+
+#### 10.2 高德 Key 要求(两种 Key,必须用户提供)
+
+**Skill 不内置任何 Key**。用户需到 [高德开放平台](https://console.amap.com/dev/key/app) 申请以下两类 Key:
+
+| 用途 | Key 类型 | 环境变量 | 说明 |
+|---|---|---|---|
+| HTML 地图底图加载 | **Web 端 (JS API)** | `AMAP_JS_KEY` | 应用类型选「Web 端(JS API)」 |
+| JS API 安全密钥 | (与 JS API Key 配套) | `AMAP_SECURITY` | 2021-12-02 后申请的 Key 必须配置 |
+| Python 服务端地理编码 | **Web 服务** | `AMAP_KEY` | 应用类型选「Web 服务」(REST 端点) |
+
+**两类 Key 不能互通**:JS API Key 调 REST 会报 `USERKEY_PLAT_NOMATCH`,反之亦然。
+
+**配置方式**(任选其一):
+
+```bash
+# 方式 A:bash / git-bash 环境变量(推荐,持久化到 shell 配置)
+export AMAP_JS_KEY="用户提供的 JS API Key"
+export AMAP_SECURITY="用户提供的安全密钥"
+export AMAP_KEY="用户提供的 Web 服务 Key"
+
+# 方式 B:Windows PowerShell
+$env:AMAP_JS_KEY="..."
+$env:AMAP_SECURITY="..."
+$env:AMAP_KEY="..."
+
+# 方式 C:单次命令前置(临时)
+AMAP_KEY=xxx AMAP_JS_KEY=yyy AMAP_SECURITY=zzz python inject.py ...
+```
+
+**用户没提供 Key 时**:Skill 应当通过 `AskUserQuestion` 主动询问三类 Key,并指导用户到高德控制台申请;**不要编造或硬编码任何 Key 进 HTML**。
+
+#### 10.3 5 步详细说明
+
+```bash
+SKILL="$SKILL_DIR"
+REPORT="$OUTPUT_DIR/{城市}{时间}调查报告_博查版.md"
+CITY="{城市}"
+
+# Step 1: 抽取地点
+python "$SKILL/scripts/extract_places.py" "$REPORT"
+# 输出: {城市}{时间}调查报告_博查版.places.json
+
+# Step 2: 服务端地理编码(需要 AMAP_KEY)
+python "$SKILL/scripts/geocode.py" \
+  "$REPORT.places.json" "$CITY"
+# 输出: {城市}{时间}调查报告_博查版.places.geo.json
+
+# Step 3: LLM 清理(需要 BOCHA_API_KEY,可选)
+# 用 bocha DeepSeek-V4 Flash API 判断名称是否为真实地理位置
+# 移除:食物名/活动名/描述/重复项;修复坐标;补充已知坐标
+python "$SKILL/scripts/clean_geojson.py"
+# 自动扫描 $OUTPUT_DIR/*.geo.json 并清理
+
+# Step 4: 注入 HTML 模板(需要 AMAP_JS_KEY + AMAP_SECURITY)
+# 地图中心自动从地点坐标的修剪中点计算,抗离群值
+python "$SKILL/scripts/inject.py" \
+  "$REPORT.places.geo.json" \
+  "$OUTPUT_DIR/{城市}地图_博查版.html" \
+  "$CITY" "{时间范围如 2026/7/4-5}"
+# 输出统一命名为 {城市}地图_博查版.html(去掉时间前缀避免重复)
+
+# Step 5: 质量验证
+python "$SKILL/scripts/validate_map.py" \
+  "$OUTPUT_DIR/{城市}地图_博查版.html"
+# 检查:文件大小、模板占位符、中心非北京回退、100% 编码、无 NaN、坐标在中国范围
+```
+
+**结果**:双击 `{城市}地图_博查版.html` 即可在浏览器打开,所有标记立即可见。
+
+#### 10.4 LLM 内容过滤(clean_geojson.py)
+
+`clean_geojson.py` 使用 bocha DeepSeek-V4 Flash API 进行内容判断:
+
+- **句法级预过滤**(快,无 API 调用):箭头→、纯数字、车次号、Day标签、出口标识等
+- **LLM 分类**(批量,每批 25 个):调用 `POST https://api.bocha.cn/v1/chat/completions`,模型 `deepseek-v4-flash`
+- **判断依据**:是否可在地图上标注的真实地理位置(景点、商场、餐厅、公园、地铁站等)
+- **排除**:食物名、活动/演出名、广告文案、统计数据、路线描述
+- **补充已知坐标**:从 `known_coords.json`(134 条预置)直接匹配,编码格式为 `[lng, lat]`
+
+API 调用格式:
+```bash
+curl -X POST https://api.bocha.cn/v1/chat/completions \
+  -H "Authorization: Bearer $BOCHA_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"deepseek-v4-flash","messages":[{"role":"system","content":"你是城市旅游地点分类助手..."},{"role":"user","content":"[\"八咏楼\",\"金华火腿\",\"古子城美食街\"]"}],"temperature":0,"max_tokens":2048}'
+```
+
+#### 10.5 11 类配色系统
+
+地图标记按调查方向分 11 类,采用**水滴形 + 字母**标记,鼠标悬停显示标签:
+
+| 类型 | 字母 | 颜色 | 说明 |
+|---|---|---|---|
+| 演唱会 | C | 🔴 #d32f2f | 演唱会/音乐会 |
+| 球赛 | S | 🟣 #7b1fa2 | 体育赛事 |
+| 集市 | M | 🟡 #f9a825 | 集市/夜市 |
+| 博物馆 | U | 🔵 #1565c0 | 博物馆/展览 |
+| 5A景区 | 5 | 🟠 #e65100 | 5A/4A 景区 |
+| 喜茶 | H | 🩷 #ec407a | 喜茶门店 |
+| 美食街 | F | 💮 #ad1457 | 美食街/老字号 |
+| City Walk | W | 🌊 #00838f | City Walk 路线 |
+| 购物中心 | L | 💜 #4527a0 | 商场 |
+| 地铁站 | D | ⚪ #546e7a | 地铁关键站 |
+| 优惠门票 | T | 🟢 #2e7d32 | 优惠门票 |
+
+#### 10.6 已实现的核心交互
+
+- ✅ **分类筛选 pill**:点击切换显示/隐藏类别
+- ✅ **搜索框**:实时过滤卡片(名称/地址/备注)
+- ✅ **双向联动**:点击卡片 → 地图飞至 + 打开 InfoWindow;点击标记 → 高亮卡片
+- ✅ **自动视野适配**:启动时自动 `setFitView` 包含所有标记
+- ✅ **图例**:右下角显示 11 类配色对照
+- ✅ **响应式**:手机纵向布局 / 桌面横向布局
+- ✅ **NaN 坐标保护**:无坐标的地点不参与地图飞至,提示用户
+- ✅ **中心合理性检查**:地图中心为北京但地点在别处时显示警告横幅
+
+#### 10.7 已知问题与修复记录
+
+| 问题 | 根因 | 修复 |
+|---|---|---|
+| 部分城市中心在北京 | inject.py CENTERS 字典缺失该城市 | 改为从地点坐标**修剪中点**自动计算(抗离群值) |
+| 八咏楼等地点"未定位" | clean_geojson.py 的 lat/lng 赋值反了 | `p['lat'],p['lng']=coords[1],coords[0]` |
+| 食物名/活动名出现在地图 | 硬编码规则无法覆盖全部 | 改用 bocha DeepSeek-V4 Flash LLM API 分类 |
+| 重复文件混乱 | 管线无统一入口,各步骤独立执行 | `build_map.sh` 一键管线,自动清理旧文件 |
+| 地图中心偏离 | min/max 中点受离群坐标影响 | 改用**修剪中点**(去除两端 10% 后取中点) |
+| HTML 中 TRIP_DATA 无法解析 | JS 对象非 JSON(无引号 key、注释) | validate_map.py 增加 JS→JSON 转换器 |
+| **坐标城市错乱**(潮州开元寺→泉州) | known_coords 中"开元寺"存的是泉州坐标;AMAP city 参数只是提示而非硬过滤;geocode.py 不校验返回 city 字段 | ① 删除 known_coords 中多城市共有地名(AMBIGUOUS_NAMES 集);② geocode.py Layer B:校验 AMAP 响应 city 字段,不匹配则重试;③ Layer C:坐标中国范围检查;④ inject.py 防御性过滤(>3° 偏离中心则隐藏) |
+
+#### 10.8 交付
+
+告知用户:
+- Markdown 报告路径
+- 地图 HTML 路径(统一为 `{城市}地图_博查版.html`)
+- 地点总数 + 编码成功率(100% 预编码)
+- 地图验证结果(通过/警告/失败)
 
 ---
 
@@ -449,6 +662,7 @@ Headers:
 - **遇到踩坑时** → 读 `references/pitfalls.md`(完整踩坑清单 + 决策树)
 - **报告写完后** → 读 `references/quality_check.md`(质量检查 + 补查询迭代,**必做**)
 - **用户要 HTML 时** → 用 `scripts/md_to_html.py`(三档优先级转换,内嵌 CSS,响应式)
+- **用户要地图时** → 读 `references/map_generation.md`(三步生成 + 模板注入,**Step 10**)
 
 ---
 
@@ -456,4 +670,4 @@ Headers:
 
 **博查 API + summary 字段 + 任务间数据复用 + 4+4+1 批次 + 跨城市标准化 SOP + 质量检查迭代 = 11-15 次调用产出 20KB+ 高质量图文报告,覆盖 11 个调查方向。**
 
-记住 5 个关键节点:**先算时间 → 设计 query → 4 路并行 → 按模板整合 → 质量检查迭代**(Step 8 不可跳过)→ **HTML 输出**(Step 9 条件触发)。
+记住 6 个关键节点:**先算时间 → 设计 query → 4 路并行 → 按模板整合 → 质量检查迭代**(Step 8 不可跳过)→ **HTML 输出**(Step 9 条件触发)→ **地图面板**(Step 10 条件触发)。
